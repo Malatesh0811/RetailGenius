@@ -1,64 +1,64 @@
-# 📊 RetailGenius: AI-Powered Supply Chain Analytics
+# ⚡ RetailGenius: Enterprise AI Analytics Suite
 
-![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
-![Streamlit](https://img.shields.io/badge/Frontend-Streamlit-red)
-![AI](https://img.shields.io/badge/AI-Llama3%20%2F%20Groq-purple)
-![Status](https://img.shields.io/badge/Status-Live-success)
+![Python](https://img.shields.io/badge/Python-3.9%2B-blue)
+![Streamlit](https://img.shields.io/badge/Streamlit-v1.40-FF4B4B)
+![LangChain](https://img.shields.io/badge/AI-LangChain-green)
 
-### 🚀 **Project Overview**
-**RetailGenius** is an end-to-end analytics suite designed to bridge the gap between raw data and business decision-making. 
+**RetailGenius** is an autonomous business intelligence platform designed to bridge the gap between raw data and executive decision-making. It replaces static dashboards with an interactive AI agent capable of answering complex ad-hoc queries and forecasting future trends.
 
-It solves two critical business problems:
-1.  **The "Ad-Hoc Query" Bottleneck:** Non-technical managers often wait days for analysts to answer simple questions like *"What was the sales trend in 2023?"*. RetailGenius solves this with a **Text-to-SQL AI Agent**.
-2.  **Inventory Planning:** It uses **Machine Learning (Facebook Prophet)** to forecast demand 90 days into the future, helping supply chain teams avoid stockouts.
+## 🚀 Key Features
 
-### 🎥 **Demo**
-*(Add a screenshot of your dashboard here later)*
+### 1. 📊 Executive Command Center
+* **Real-time KPIs**: Monitor Revenue, Net Profit, and Transaction Volume with dynamic growth deltas.
+* **Interactive Visuals**: Full-width charts for Revenue Composition and Regional Profitability.
+* **Titanium UI**: A modern, high-contrast "Dark Mode" interface designed for long-session usability.
 
-### 🏗️ **Architecture**
-The application follows a modern **Lakehouse-style** architecture:
+### 2. 🧠 Autonomous SQL Analyst
+* **Natural Language Querying**: Powered by **Llama 3 (via Groq)**, users can ask questions like *"What were the top 3 selling products in 2012?"* in plain English.
+* **Self-Correcting Logic**: The agent intelligently identifies database schemas and corrects its own SQL syntax errors.
 
-1.  **ETL Layer:** Python scripts (`pandas`) clean raw Excel data, normalize schema, and load it into a SQL database.
-2.  **Predictive Layer:** **Facebook Prophet** (Time-Series ML) trains on historical data to predict future sales trends.
-3.  **Prescriptive Layer:** **LangChain** + **Llama 3 (via Groq)** acts as an autonomous agent that translates Natural Language into SQL queries.
-4.  **UI Layer:** A generic **Streamlit** interface for accessibility.
+### 3. 🔮 Predictive Engine
+* **Time-Series Forecasting**: Integrated **Facebook Prophet** model to predict sales trends 30-365 days into the future.
+* **Seasonality Detection**: Automatically identifies weekly and yearly buying patterns.
 
-### 🛠️ **Tech Stack**
-* **Language:** Python
-* **Database:** SQLite (Scalable to PostgreSQL)
-* **LLM Engine:** Llama 3 (70B) via Groq API
-* **Orchestration:** LangChain
-* **Visualization:** Plotly & Streamlit
+---
 
-### ⚡ **Key Features**
-* **📈 Smart Dashboard:** Real-time KPIs (Sales, Profit, Orders) and category-wise breakdown.
-* **🔮 ML Forecasting:** 90-day rolling sales prediction with confidence intervals.
-* **🤖 AI Analyst:**
-    * *User:* "Who are the top 5 customers by profit in 2012?"
-    * *AI:* Generates SQL `SELECT ... ORDER BY profit DESC LIMIT 5`, runs it, and explains the result.
+## 🛠️ Tech Stack
 
-### 💻 **How to Run Locally**
+* **Frontend**: Streamlit (Custom CSS for "Titanium" Theme)
+* **AI/LLM**: LangChain, Groq API (Llama 3 70B)
+* **Database**: SQLite (Production-ready local instance)
+* **Visualization**: Plotly Express & Graph Objects
+* **Forecasting**: Prophet
 
-1.  **Clone the repository**
+---
+
+## 💻 Installation & Setup
+
+1.  **Clone the Repository**
     ```bash
-    git clone [https://github.com/yourusername/retail-genius.git](https://github.com/yourusername/retail-genius.git)
-    cd retail-genius
+    git clone [https://github.com/YOUR_USERNAME/RetailGenius.git](https://github.com/YOUR_USERNAME/RetailGenius.git)
+    cd RetailGenius
     ```
 
-2.  **Install dependencies**
+2.  **Install Dependencies**
     ```bash
     pip install -r requirements.txt
     ```
 
-3.  **Run the ETL Pipeline** (Loads the data)
-    ```bash
-    python 1_etl_pipeline.py
-    ```
+3.  **Configure API Key**
+    * Open `app.py`
+    * Add your Groq API Key to line 16: `GROQ_API_KEY = "gsk_..."`
 
-4.  **Launch the App**
+4.  **Run the Application**
     ```bash
     streamlit run app.py
     ```
 
 ---
-*Built by [Your Name] as a showcase of Modern Data Stack engineering.*
+
+## 🔮 Future Roadmap
+
+* **Containerization**: Docker support for cloud-agnostic deployment.
+* **RFM Clustering**: Automated customer segmentation using K-Means.
+* **Multi-Source ETL**: Connectors for PostgreSQL and Snowflake.

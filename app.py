@@ -11,9 +11,9 @@ import streamlit as st
 
 from retailgenius import ui
 from retailgenius.agent import DEFAULT_MODEL, ask, build_sql_agent
-from retailgenius.analytics import (DORMANT, LOYAL, REGULAR, VIP, build_rfm, forecast_sales, kpis,
-                                    pct_change, previous_period)
+from retailgenius.analytics import DORMANT, LOYAL, REGULAR, VIP, build_rfm, kpis, pct_change, previous_period
 from retailgenius.data import DB_PATH, filter_orders, load_orders
+from retailgenius.forecasting import backtest, forecast_sales
 
 st.set_page_config(page_title="RetailGenius", page_icon="🚀", layout="wide")
 ui.apply_theme()
@@ -37,6 +37,11 @@ GROQ_MODEL = get_setting("GROQ_MODEL", DEFAULT_MODEL)
 @st.cache_data
 def cached_orders():
     return load_orders()
+
+
+@st.cache_data(show_spinner=False)  # same filters -> reuse the result instead of refitting 3 models
+def cached_backtest(data):
+    return backtest(data)
 
 
 @st.cache_resource  # build the agent once per key/model, not on every question
@@ -138,16 +143,47 @@ with tab2:
             with st.spinner("Calculating future trends..."):
                 history, forecast = forecast_sales(df, days_pred)
 
+            future = forecast[forecast["ds"] > history["ds"].max()]
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=history["ds"], y=history["y"], name="Historical",
                                      mode="markers", marker=dict(color="#2dd4bf", size=3, opacity=0.5)))
+            # 80% uncertainty band for the future days: upper edge, then lower edge filled up to it
+            fig.add_trace(go.Scatter(x=future["ds"], y=future["yhat_upper"], mode="lines",
+                                     line=dict(width=0), showlegend=False, hoverinfo="skip"))
+            fig.add_trace(go.Scatter(x=future["ds"], y=future["yhat_lower"], name="80% interval", mode="lines",
+                                     line=dict(width=0), fill="tonexty", fillcolor="rgba(56,189,248,0.15)"))
             fig.add_trace(go.Scatter(x=forecast["ds"], y=forecast["yhat"], name="Projection",
                                      mode="lines", line=dict(color="#38bdf8", width=2)))
             st.plotly_chart(ui.transparent(fig, xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#1e293b")),
                             width="stretch")
             ui.context_box("💡 Prophet Forecast:", 'The <span style="color:#38bdf8">Blue Line</span> is the '
-                           f"model's fit on past data plus its projection for the next {days_pred} days. "
-                           "Upward trends suggest growth; look for recurring patterns (seasonality).")
+                           f"model's fit on past data plus its projection for the next {days_pred} days; the "
+                           "shaded band is its 80% uncertainty interval. Daily sales are very noisy, so read "
+                           "the line as the expected level, not a prediction for any single day.")
+
+    # --- How accurate is it? Backtest on data the model never saw ---
+    st.markdown("#### How accurate is this forecast?")
+    st.caption("Rolling backtest: train on everything before a cutoff, forecast the next 6 months, compare "
+               "with what actually happened. Repeated for the last 3 half-years and scored on monthly totals. "
+               "Prophet is compared with two simple baselines - a model is only useful if it beats them.")
+    if st.button("Run accuracy check"):
+        with st.spinner("Fitting one model per fold..."):
+            summary, details = cached_backtest(df)
+        if summary.empty:
+            st.info("Not enough history in the selected period (need 12+ months before the test windows).")
+        else:
+            st.dataframe(summary.style.format({"MAPE %": "{:.1f}", "MAE $": "${:,.0f}"}), hide_index=True)
+            best = summary.iloc[0]["model"]
+            prophet_mape = summary.set_index("model").loc["Prophet", "MAPE %"]
+            if best == "Prophet":
+                st.success(f"Prophet is the most accurate model here (monthly MAPE {prophet_mape:.1f}%).")
+            else:
+                st.warning(f"**{best}** beats Prophet (Prophet's MAPE: {prophet_mape:.1f}%). This data has "
+                           "little trend or seasonality for Prophet to learn, so a simple average does as well "
+                           "or better - treat the projection above as a rough guide.")
+            monthly = details.pivot_table(index="month", columns="model", values="predicted")
+            monthly["Actual"] = details.groupby("month")["actual"].first()
+            st.line_chart(monthly)
 
 # ==========================================
 # TAB 3: AI ANALYST

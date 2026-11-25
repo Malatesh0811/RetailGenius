@@ -1,9 +1,10 @@
-"""Pure analytics functions (no Streamlit) - KPIs, period comparison, RFM, forecasting."""
+"""Pure analytics functions (no Streamlit) - KPIs, period comparison, RFM segmentation.
+
+Forecasting lives in retailgenius/forecasting.py."""
 from datetime import timedelta
 from typing import NamedTuple
 
 import numpy as np
-import pandas as pd
 
 
 class Kpis(NamedTuple):
@@ -57,19 +58,3 @@ def build_rfm(data, vip_quantile=0.95, dormant_days=365, loyal_orders=5):
     )
     return rfm
 
-
-# --- Forecasting -----------------------------------------------------------------
-def daily_sales(data):
-    """Total sales per order date, in Prophet's expected format (columns ds, y)."""
-    return data.groupby("order_date")["sales"].sum().reset_index().rename(columns={"order_date": "ds", "sales": "y"})
-
-
-def forecast_sales(data, days):
-    """Fit Prophet on daily sales and predict `days` ahead. Returns (history, forecast)."""
-    from prophet import Prophet  # imported lazily: Prophet is slow to import and only this needs it
-
-    history = daily_sales(data)
-    model = Prophet()
-    model.fit(history)
-    forecast = model.predict(model.make_future_dataframe(periods=days))
-    return history, forecast

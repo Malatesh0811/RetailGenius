@@ -17,9 +17,19 @@
 * **Natural Language Querying**: Powered by an LLM on **Groq** (default `openai/gpt-oss-120b`, configurable via `GROQ_MODEL`), users can ask questions like *"What were the top 3 selling products in 2012?"* in plain English.
 * **Self-Correcting Logic**: The agent intelligently identifies database schemas and corrects its own SQL syntax errors.
 
-### 3. 🔮 Predictive Engine
-* **Time-Series Forecasting**: Integrated **Facebook Prophet** model to predict sales trends 30-365 days into the future.
-* **Seasonality Detection**: Automatically identifies weekly and yearly buying patterns.
+### 3. 🔮 Forecast + Honest Evaluation
+* **Time-Series Forecasting**: **Prophet** projects daily sales 30-365 days ahead with an 80% uncertainty band.
+* **Rolling Backtest**: 3 folds x 6 months, scored on monthly totals against two baselines
+  (`python -m retailgenius.forecasting`):
+
+  | Model | Monthly MAPE |
+  |---|---|
+  | Historical monthly average (baseline) | **12.1%** |
+  | Prophet | 14.2% |
+  | Same period last year (baseline) | 20.8% |
+
+  Sales in this dataset are nearly flat with weak seasonality, so Prophet does **not** beat a simple
+  average - the app says so instead of hiding it.
 
 ---
 
@@ -77,7 +87,8 @@
 app.py                  Streamlit UI only (layout, widgets, charts)
 retailgenius/
   data.py               load + validate the orders table, filter_orders()
-  analytics.py          KPIs, period-over-period change, RFM segmentation, Prophet forecast
+  analytics.py          KPIs, period-over-period change, RFM segmentation
+  forecasting.py        Prophet forecast + rolling backtest vs baselines
   agent.py              LangChain SQL agent on a read-only SQLite connection
   etl.py                Superstore.xls -> sales.db
   ui.py                 theme CSS, icons, small HTML helpers

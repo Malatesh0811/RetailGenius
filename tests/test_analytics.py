@@ -3,8 +3,7 @@ from datetime import date
 import pandas as pd
 import pytest
 
-from retailgenius.analytics import (DORMANT, LOYAL, REGULAR, VIP, build_rfm, daily_sales, kpis,
-                                    pct_change, previous_period)
+from retailgenius.analytics import DORMANT, LOYAL, REGULAR, VIP, build_rfm, kpis, pct_change, previous_period
 
 
 def test_kpis_counts_distinct_orders_not_rows(orders):
@@ -67,8 +66,3 @@ def test_rfm_vip_beats_dormant():
     assert seg["Big but old"] == VIP
     assert seg["Small"] == REGULAR
 
-
-def test_daily_sales_sums_per_day_in_prophet_format(orders):
-    daily = daily_sales(orders)
-    assert list(daily.columns) == ["ds", "y"]
-    assert daily.loc[daily["ds"] == "2012-01-10", "y"].item() == pytest.approx(150.0)

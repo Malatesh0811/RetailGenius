@@ -53,10 +53,36 @@
     * Replace the placeholder with your Groq key from https://console.groq.com/keys
     * `secrets.toml` is git-ignored, so the key never reaches GitHub
 
-4.  **Run the Application**
+4.  **Run the Application** (from the project folder, so Streamlit finds `.streamlit/`)
     ```bash
     streamlit run app.py
     ```
+
+5.  *(Optional)* **Rebuild the database** from `Superstore.xls`
+    ```bash
+    python -m retailgenius.etl
+    ```
+
+6.  *(Optional)* **Run the tests**
+    ```bash
+    pip install -r requirements-dev.txt
+    pytest
+    ```
+
+---
+
+## 🗂️ Project Structure
+
+```
+app.py                  Streamlit UI only (layout, widgets, charts)
+retailgenius/
+  data.py               load + validate the orders table, filter_orders()
+  analytics.py          KPIs, period-over-period change, RFM segmentation, Prophet forecast
+  agent.py              LangChain SQL agent on a read-only SQLite connection
+  etl.py                Superstore.xls -> sales.db
+  ui.py                 theme CSS, icons, small HTML helpers
+tests/                  pytest suite (runs without an API key)
+```
 
 ---
 

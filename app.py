@@ -3,6 +3,7 @@
 This file only lays out the page. All logic lives in the `retailgenius` package
 (data, analytics, agent, etl), which is unit-tested in tests/.
 """
+import json
 import os
 
 import plotly.express as px
@@ -10,9 +11,9 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from retailgenius import ui
-from retailgenius.agent import DEFAULT_MODEL, ask, build_sql_agent
+from retailgenius.agent import DEFAULT_MODEL, ask_with_sql, build_sql_agent
 from retailgenius.analytics import DORMANT, LOYAL, REGULAR, VIP, build_rfm, kpis, pct_change, previous_period
-from retailgenius.data import DB_PATH, filter_orders, load_orders
+from retailgenius.data import DB_PATH, PROJECT_ROOT, filter_orders, load_orders
 from retailgenius.forecasting import backtest, forecast_sales
 
 st.set_page_config(page_title="RetailGenius", page_icon="🚀", layout="wide")
@@ -42,6 +43,16 @@ def cached_orders():
 @st.cache_data(show_spinner=False)  # same filters -> reuse the result instead of refitting 3 models
 def cached_backtest(data):
     return backtest(data)
+
+
+@st.cache_data
+def latest_eval_score():
+    """Score from the last `python -m retailgenius.evaluation` run, if the results file exists."""
+    path = PROJECT_ROOT / "evals" / "results.json"
+    if not path.exists():
+        return None
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return {k: data[k] for k in ("passed", "total", "model")}
 
 
 @st.cache_resource  # build the agent once per key/model, not on every question
@@ -190,13 +201,25 @@ with tab2:
 # ==========================================
 with tab3:
     ui.header("Intelligent Query Engine", ui.ICON_BRAIN)
+    eval_score = latest_eval_score()
+    if eval_score:
+        st.caption(f"Benchmark: answered {eval_score['passed']}/{eval_score['total']} test questions correctly "
+                   f"(model `{eval_score['model']}`, checked against hand-written SQL - see evals/results.md). "
+                   "Note: the agent queries the full database; sidebar filters do not apply here.")
     if "messages" not in st.session_state:
         st.session_state.messages = []
+
+    def show_sql(queries):
+        if queries:
+            with st.expander(f"Show SQL ({len(queries)} quer{'y' if len(queries) == 1 else 'ies'})"):
+                for q in queries:
+                    st.code(q, language="sql")
 
     # Model output is rendered as plain markdown (never unsafe HTML), so it cannot inject HTML/scripts.
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
+            show_sql(msg.get("sql"))
 
     user_query = st.chat_input("Query the database...")
     if user_query:
@@ -210,9 +233,10 @@ with tab3:
             with st.chat_message("assistant"):
                 with st.spinner("Querying the database..."):
                     try:
-                        response = ask(cached_agent(GROQ_API_KEY, GROQ_MODEL), user_query)
+                        response, queries = ask_with_sql(cached_agent(GROQ_API_KEY, GROQ_MODEL), user_query)
                         st.markdown(response)
-                        st.session_state.messages.append({"role": "assistant", "content": response})
+                        show_sql(queries)
+                        st.session_state.messages.append({"role": "assistant", "content": response, "sql": queries})
                     except Exception as e:
                         st.error(f"Error: {e}")
 

@@ -1,0 +1,252 @@
+{
+  "model": "openai/gpt-oss-120b",
+  "run": "2026-11-25 19:33",
+  "passed": 20,
+  "total": 20,
+  "results": [
+    {
+      "question": "What is the total sales amount across all orders?",
+      "expected": 14915600.824000038,
+      "answer": "The total sales amount across all orders is **14,915,600.82**.",
+      "passed": true,
+      "seconds": 7.0,
+      "sql": [
+        "SELECT SUM(sales) AS total_sales FROM orders;"
+      ],
+      "error": "",
+      "trap": ""
+    },
+    {
+      "question": "What was the total profit in 2011?",
+      "expected": 381455.986224,
+      "answer": "The total profit for all orders placed in\u202f2011 was **$381,455.99**.",
+      "passed": true,
+      "seconds": 16.1,
+      "sql": [
+        "SELECT SUM(profit) AS total_profit_2011 FROM orders WHERE strftime('%Y', order_date) = '2011';"
+      ],
+      "error": "",
+      "trap": "dates are stored as text"
+    },
+    {
+      "question": "How many orders are there in total?",
+      "expected": 5496,
+      "answer": "There are **5,496** distinct orders in the database.",
+      "passed": true,
+      "seconds": 7.7,
+      "sql": [
+        "SELECT COUNT(DISTINCT order_id) AS total_orders FROM orders;"
+      ],
+      "error": "",
+      "trap": "one order has several rows: COUNT(*) gives 8,399, the right answer is distinct orders"
+    },
+    {
+      "question": "How many different customers are there?",
+      "expected": 795,
+      "answer": "There are **795** different customers.",
+      "passed": true,
+      "seconds": 15.5,
+      "sql": [
+        "SELECT COUNT(DISTINCT customer_name) AS distinct_customers FROM orders;"
+      ],
+      "error": "",
+      "trap": ""
+    },
+    {
+      "question": "How many orders were placed in December 2012?",
+      "expected": 96,
+      "answer": "There were **96** distinct orders placed in December\u202f2012.",
+      "passed": true,
+      "seconds": 38.1,
+      "sql": [
+        "SELECT COUNT(DISTINCT order_id) AS order_count FROM orders WHERE strftime('%Y-%m', order_date) = '2012-12';"
+      ],
+      "error": "",
+      "trap": "distinct orders + month filter on text dates"
+    },
+    {
+      "question": "What were the total sales in the West region in 2010?",
+      "expected": 851790.4265000011,
+      "answer": "The total sales in the West region for the year\u202f2010 were **$851,790.43**.",
+      "passed": true,
+      "seconds": 29.8,
+      "sql": [
+        "SELECT SUM(sales) AS total_sales FROM orders WHERE region = 'West' AND strftime('%Y', order_date) = '2010';"
+      ],
+      "error": "",
+      "trap": "two filters"
+    },
+    {
+      "question": "How many order lines have a negative profit?",
+      "expected": 4264,
+      "answer": "There are **4,264** order lines with a negative profit.",
+      "passed": true,
+      "seconds": 26.0,
+      "sql": [
+        "SELECT COUNT(*) AS negative_profit_lines FROM orders WHERE profit < 0;"
+      ],
+      "error": "",
+      "trap": "here rows ARE the right unit"
+    },
+    {
+      "question": "Which product category has the highest total sales?",
+      "expected": "Technology",
+      "answer": "The product category with the highest total sales is **Technology**, with total sales of approximately **5,984,248.18**.",
+      "passed": true,
+      "seconds": 35.4,
+      "sql": [
+        "SELECT product_category, SUM(sales) AS total_sales FROM orders GROUP BY product_category ORDER BY total_sales DESC LIMIT 1;"
+      ],
+      "error": "",
+      "trap": ""
+    },
+    {
+      "question": "Which region generated the most profit?",
+      "expected": "Ontario",
+      "answer": "The region that generated the most profit is **Ontario**, with a total profit of about **346,869**.",
+      "passed": true,
+      "seconds": 27.6,
+      "sql": [
+        "SELECT region, SUM(profit) AS total_profit FROM orders GROUP BY region ORDER BY total_profit DESC LIMIT 1"
+      ],
+      "error": "",
+      "trap": ""
+    },
+    {
+      "question": "Which province has the lowest total profit?",
+      "expected": "Nunavut",
+      "answer": "The province with the lowest total profit is **Nunavut**, with a total profit of approximately **2,841.12**.",
+      "passed": true,
+      "seconds": 23.2,
+      "sql": [
+        "SELECT province, SUM(profit) AS total_profit FROM orders GROUP BY province ORDER BY total_profit ASC LIMIT 1;"
+      ],
+      "error": "",
+      "trap": "ascending order"
+    },
+    {
+      "question": "Who are the top 3 customers by total sales?",
+      "expected": [
+        "Emily Phan",
+        "Deborah Brumfield",
+        "Roy Skaria"
+      ],
+      "answer": "The top three customers by total sales are:\n\n1. **Emily\u202fPhan** \u2013\u202f$117,124.44  \n2. **Deborah\u202fBrumfield** \u2013\u202f$97,433.14  \n3. **Roy\u202fSkaria** \u2013\u202f$92,542.15",
+      "passed": true,
+      "seconds": 31.4,
+      "sql": [
+        "SELECT customer_name, SUM(sales) AS total_sales FROM orders GROUP BY customer_name ORDER BY total_sales DESC LIMIT 3;"
+      ],
+      "error": "",
+      "trap": ""
+    },
+    {
+      "question": "Which customer segment brought in the most profit?",
+      "expected": "Corporate",
+      "answer": "The **Corporate** customer segment generated the highest total profit.",
+      "passed": true,
+      "seconds": 30.3,
+      "sql": [
+        "SELECT customer_segment, SUM(profit) AS total_profit FROM orders GROUP BY customer_segment ORDER BY total_profit DESC LIMIT 1;"
+      ],
+      "error": "",
+      "trap": ""
+    },
+    {
+      "question": "Which product sub-category had the highest sales in 2012?",
+      "expected": "Office Machines",
+      "answer": "The product sub\u2011category with the highest total sales in\u202f2012 was **Office Machines**, with sales of about **$563,308**.",
+      "passed": true,
+      "seconds": 28.8,
+      "sql": [
+        "SELECT product_sub_category, SUM(sales) AS total_sales\nFROM orders\nWHERE strftime('%Y', order_date) = '2012'\nGROUP BY product_sub_category\nORDER BY total_sales DESC\nLIMIT 1;"
+      ],
+      "error": "",
+      "trap": ""
+    },
+    {
+      "question": "Which single month (year and month, e.g. March 2010) had the highest total sales?",
+      "expected": "2009-01",
+      "answer": "The month with the highest total sales was **January\u202f2009**, with total sales of about **$516,303**.",
+      "passed": true,
+      "seconds": 32.0,
+      "sql": [
+        "SELECT strftime('%Y', order_date) AS yr, strftime('%m', order_date) AS mo, SUM(sales) AS total_sales FROM orders GROUP BY yr, mo ORDER BY total_sales DESC LIMIT 1;"
+      ],
+      "error": "",
+      "trap": "must group by year AND month"
+    },
+    {
+      "question": "What is the overall profit margin (total profit divided by total sales) as a percentage?",
+      "expected": 10.20252537955016,
+      "answer": "The overall profit margin is **approximately 10.20\u202f%**.",
+      "passed": true,
+      "seconds": 31.4,
+      "sql": [
+        "SELECT (SUM(profit) / SUM(sales)) * 100.0 AS profit_margin_pct FROM orders;"
+      ],
+      "error": "",
+      "trap": "ratio of sums, not average of row margins"
+    },
+    {
+      "question": "What percentage of total sales comes from the Technology category?",
+      "expected": 40.120731659505125,
+      "answer": "The Technology category accounts for **approximately 40.12\u202f%** of total sales.",
+      "passed": true,
+      "seconds": 27.5,
+      "sql": [
+        "SELECT ROUND(100.0 * SUM(CASE WHEN product_category='Technology' THEN sales ELSE 0 END) / SUM(sales), 2) AS tech_sales_pct FROM orders;"
+      ],
+      "error": "",
+      "trap": ""
+    },
+    {
+      "question": "What is the average order value (total sales divided by number of orders)?",
+      "expected": 2713.9011688500796,
+      "answer": "The average order value, calculated as total sales divided by the number of distinct orders, is **approximately\u202f2,713.90**.",
+      "passed": true,
+      "seconds": 31.5,
+      "sql": [
+        "SELECT SUM(sales) / COUNT(DISTINCT order_id) AS avg_order_value FROM orders;"
+      ],
+      "error": "",
+      "trap": "AVG(sales) gives the average ROW value, not order value"
+    },
+    {
+      "question": "By what percentage did total sales change in 2012 compared to 2011?",
+      "expected": 8.238645949178135,
+      "answer": "The total sales in 2012 were **$3,719,963.86**, compared with **$3,436,816.70** in 2011.  \nThis represents an increase of **about\u202f8.24\u202f%** in total sales from 2011 to 2012.",
+      "passed": true,
+      "seconds": 35.5,
+      "sql": [
+        "SELECT sales_2012,\n       sales_2011,\n       CASE WHEN sales_2011 = 0 THEN NULL\n            ELSE ((sales_2012 - sales_2011) / sales_2011) * 100\n       END AS pct_change\nFROM (\n    SELECT SUM(CASE WHEN strftime('%Y', order_date) = '2012' THEN sales ELSE 0 END) AS sales_2012,\n           SUM(CASE WHEN strftime('%Y', order_date) = '2011' THEN sales ELSE 0 END) AS sales_2011\n    FROM orders\n);"
+      ],
+      "error": "",
+      "trap": "year-over-year growth"
+    },
+    {
+      "question": "On average, how many days does it take to ship an order after it is placed?",
+      "expected": 2.0332182402666983,
+      "answer": "On average, it takes **about\u202f2.03\u202fdays** to ship an order after it is placed.",
+      "passed": true,
+      "seconds": 29.0,
+      "sql": [
+        "SELECT AVG(julianday(ship_date) - julianday(order_date)) AS avg_ship_days FROM orders;"
+      ],
+      "error": "",
+      "trap": "date arithmetic on text dates"
+    },
+    {
+      "question": "How many customers have placed more than 10 orders?",
+      "expected": 123,
+      "answer": "**Answer:** 123 customers have placed more than 10 orders.",
+      "passed": true,
+      "seconds": 41.0,
+      "sql": [
+        "SELECT COUNT(*) AS num_customers FROM (SELECT customer_name FROM orders GROUP BY customer_name HAVING COUNT(DISTINCT order_id) > 10)"
+      ],
+      "error": "",
+      "trap": "counting rows instead of orders gives 335 instead of 123"
+    }
+  ]
+}

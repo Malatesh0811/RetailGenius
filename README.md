@@ -15,7 +15,19 @@
 
 ### 2. 🧠 Autonomous SQL Analyst
 * **Natural Language Querying**: Powered by an LLM on **Groq** (default `openai/gpt-oss-120b`, configurable via `GROQ_MODEL`), users can ask questions like *"What were the top 3 selling products in 2012?"* in plain English.
-* **Self-Correcting Logic**: The agent intelligently identifies database schemas and corrects its own SQL syntax errors.
+* **Read-only by design**: the agent's SQLite connection is opened with `mode=ro`, so even a prompt-injected query cannot change data.
+* **Transparent**: every answer has a "Show SQL" expander with the exact queries the agent ran.
+* **Evaluated**: 20 benchmark questions with answers computed by hand-written SQL, graded deterministically (no LLM judge)
+  - `python -m retailgenius.evaluation` -> [evals/results.md](evals/results.md)
+
+  | Run | Agent setup | Score |
+  |---|---|---|
+  | v1 | default LangChain SQL prompt | 18/20 |
+  | v2 | + notes on table structure (rows = order lines, dates stored as text) | **20/20** |
+
+  v1's real failure: counting product rows as orders (335 vs 123 customers with 10+ orders). Its other miss
+  came from an ambiguous question ("which month?" - the agent summed December across all years), which was
+  reworded for v2. 20 questions is a small benchmark: treat it as a regression check, not a guarantee.
 
 ### 3. 🔮 Forecast + Honest Evaluation
 * **Time-Series Forecasting**: **Prophet** projects daily sales 30-365 days ahead with an 80% uncertainty band.
@@ -90,9 +102,11 @@ retailgenius/
   analytics.py          KPIs, period-over-period change, RFM segmentation
   forecasting.py        Prophet forecast + rolling backtest vs baselines
   agent.py              LangChain SQL agent on a read-only SQLite connection
+  evaluation.py         20-question agent benchmark + deterministic grader
   etl.py                Superstore.xls -> sales.db
   ui.py                 theme CSS, icons, small HTML helpers
 tests/                  pytest suite (runs without an API key)
+evals/                  agent evaluation reports (v1 baseline + latest)
 ```
 
 ---

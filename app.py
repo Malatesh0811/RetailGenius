@@ -32,6 +32,8 @@ def get_setting(name, default=None):
 
 GROQ_API_KEY = get_setting("GROQ_API_KEY")
 GROQ_MODEL = get_setting("GROQ_MODEL", DEFAULT_MODEL)
+# A public deployment shares one API key with every visitor, so cap questions per browser session.
+MAX_QUESTIONS = int(get_setting("MAX_QUESTIONS_PER_SESSION", 15))
 
 
 # --- Cached wrappers: Streamlit caching stays in the UI layer, the package stays plain Python ---
@@ -41,6 +43,11 @@ def cached_orders():
 
 
 @st.cache_data(show_spinner=False)  # same filters -> reuse the result instead of refitting 3 models
+def cached_forecast(data, days):
+    return forecast_sales(data, days)
+
+
+@st.cache_data(show_spinner=False)
 def cached_backtest(data):
     return backtest(data)
 
@@ -93,6 +100,14 @@ if df.empty:
 tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Forecast", "Analyst", "Segmentation"])
 
 
+def money(value):
+    """$1.52M / $381.5K / $950 - short and readable on a metric card."""
+    for size, suffix in ((1_000_000, "M"), (1_000, "K")):
+        if abs(value) >= size:
+            return f"${value / size:,.{2 if suffix == 'M' else 1}f}{suffix}"
+    return f"${value:,.0f}"
+
+
 def delta_label(now, before):
     change = pct_change(now, before)
     return None if change is None else f"{change:+.1f}% vs prev. period"
@@ -109,10 +124,14 @@ with tab1:
     prev_start, prev_end = previous_period(start_date, end_date)
     before = kpis(filter_orders(df_raw, prev_start, prev_end, sel_region, sel_cat))
 
-    st.caption(f"Deltas compare {start_date} → {end_date} with {prev_start} → {prev_end}.")
+    if before.orders:
+        st.caption(f"Deltas compare {start_date} → {end_date} with the previous period {prev_start} → {prev_end}.")
+    else:
+        st.caption("No data before the selected period, so there is nothing to compare with "
+                   "(pick a later start date to see period-over-period change).")
     c1, c2, c3 = st.columns(3, gap="large")
-    c1.metric("Total Revenue", f"${now.sales/1_000_000:.2f}M", delta_label(now.sales, before.sales))
-    c2.metric("Net Profit", f"${now.profit/1000:.1f}K", delta_label(now.profit, before.profit))
+    c1.metric("Total Revenue", money(now.sales), delta_label(now.sales, before.sales))
+    c2.metric("Net Profit", money(now.profit), delta_label(now.profit, before.profit))
     c3.metric("Orders", f"{now.orders:,}", delta_label(now.orders, before.orders))
     st.caption(f"Profit margin: {now.profit / now.sales * 100:.1f}%" if now.sales else "")
 
@@ -147,12 +166,15 @@ with tab2:
     with c_ctrl:
         st.markdown("**Model Config**")
         days_pred = st.slider("Projection Horizon", 30, 365, 90)
-        run_btn = st.button("Run Simulation", type="primary", width="stretch")
+        # A button is True only for the one rerun right after the click, so clicking any other
+        # widget would hide the chart again. Remember the request in session_state instead.
+        if st.button("Run Simulation", type="primary", width="stretch"):
+            st.session_state.show_forecast = True
 
     with c_viz:
-        if run_btn:
+        if st.session_state.get("show_forecast"):
             with st.spinner("Calculating future trends..."):
-                history, forecast = forecast_sales(df, days_pred)
+                history, forecast = cached_forecast(df, days_pred)
 
             future = forecast[forecast["ds"] > history["ds"].max()]
             fig = go.Figure()
@@ -178,6 +200,8 @@ with tab2:
                "with what actually happened. Repeated for the last 3 half-years and scored on monthly totals. "
                "Prophet is compared with two simple baselines - a model is only useful if it beats them.")
     if st.button("Run accuracy check"):
+        st.session_state.show_backtest = True
+    if st.session_state.get("show_backtest"):
         with st.spinner("Fitting one model per fold..."):
             summary, details = cached_backtest(df)
         if summary.empty:
@@ -223,9 +247,13 @@ with tab3:
 
     user_query = st.chat_input("Query the database...")
     if user_query:
+        asked = sum(m["role"] == "user" for m in st.session_state.messages)
         if not GROQ_API_KEY:
             st.error("🚨 No Groq API key found. Add GROQ_API_KEY to .streamlit/secrets.toml "
                      "(see .streamlit/secrets.toml.example) or set it as an environment variable.")
+        elif asked >= MAX_QUESTIONS:
+            st.warning(f"This demo allows {MAX_QUESTIONS} questions per session to share the free API quota "
+                       "fairly. Run it locally with your own key for unlimited questions (see the README).")
         else:
             st.session_state.messages.append({"role": "user", "content": user_query})
             with st.chat_message("user"):
@@ -254,7 +282,7 @@ with tab4:
     c1.metric("VIP Count", int((rfm["Segment"] == VIP).sum()))
     c2.metric("Loyal Count", int((rfm["Segment"] == LOYAL).sum()))
     c3.metric("At Risk", int((rfm["Segment"] == DORMANT).sum()))
-    c4.metric("Avg Spend", f"${rfm['Monetary'].mean():.0f}")
+    c4.metric("Avg Spend", money(rfm["Monetary"].mean()))
 
     col_chart, col_data = st.columns([2, 1], gap="medium")
     with col_chart:
@@ -264,4 +292,14 @@ with tab4:
                                                  DORMANT: "#94a3b8", REGULAR: "#f43f5e"})
         st.plotly_chart(ui.transparent(fig_rfm), width="stretch")
     with col_data:
-        st.dataframe(rfm[rfm["Segment"] == VIP].sort_values("Monetary", ascending=False).head(10), hide_index=True)
+        st.markdown("**Top 10 VIP customers**")
+        top_vips = rfm[rfm["Segment"] == VIP].sort_values("Monetary", ascending=False).head(10)
+        st.dataframe(
+            top_vips[["customer_name", "Recency", "Frequency", "Monetary"]], hide_index=True, width="stretch",
+            column_config={
+                "customer_name": "Customer",
+                "Recency": st.column_config.NumberColumn("Days since last", format="%d"),
+                "Frequency": st.column_config.NumberColumn("Orders", format="%d"),
+                "Monetary": st.column_config.NumberColumn("Total spend", format="dollar"),
+            },
+        )

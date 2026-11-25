@@ -10,3 +10,6 @@ headless = true
 port = 8501
 # CORS and XSRF protection stay ON (Streamlit defaults). They were disabled before,
 # which lets other websites send requests to the app on the user's behalf.
+[client]
+# Hide the developer toolbar ("Deploy" button, rerun menu) from visitors.
+toolbarMode = "viewer"

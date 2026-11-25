@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 import sqlite3
@@ -13,11 +14,20 @@ from datetime import timedelta
 # --- 1. CONFIGURATION ---
 st.set_page_config(page_title="RetailGenius Enterprise", page_icon="🚀", layout="wide")
 
-# ⚠️ API KEY SETUP
-try:
-    GROQ_API_KEY = st.secrets["GROQ_API_KEY"]
-except:
-    GROQ_API_KEY = "PASTE_YOUR_GROQ_KEY_HERE"
+# --- API KEY SETUP ---
+# The key is never written in the code. It is read from (1) .streamlit/secrets.toml
+# locally / Streamlit Cloud secrets when deployed, or (2) the GROQ_API_KEY environment variable.
+def get_setting(name, default=None):
+    try:
+        if name in st.secrets:
+            return st.secrets[name]
+    except FileNotFoundError:
+        pass  # no secrets.toml file at all -> fall back to the environment variable
+    return os.environ.get(name, default)
+
+GROQ_API_KEY = get_setting("GROQ_API_KEY")
+# Groq retires models over time (llama-3.3-70b-versatile is gone), so the model is a setting, not hard-coded.
+GROQ_MODEL = get_setting("GROQ_MODEL", "openai/gpt-oss-120b")
 
 # --- 2. CUSTOM CSS (NEON GLOW + HORIZONTAL FIT) ---
 st.markdown("""
@@ -321,8 +331,9 @@ with tab3:
     user_query = st.chat_input("Query the database...")
 
     if user_query:
-        if "PASTE_YOUR" in GROQ_API_KEY:
-            st.error("🚨 Please add your GROQ API Key in app.py!")
+        if not GROQ_API_KEY:
+            st.error("🚨 No Groq API key found. Add GROQ_API_KEY to .streamlit/secrets.toml "
+                     "(see .streamlit/secrets.toml.example) or set it as an environment variable.")
         else:
             st.session_state.messages.append({"role": "user", "content": user_query})
             with st.chat_message("user"): st.write(user_query)
@@ -331,9 +342,9 @@ with tab3:
                 with st.spinner("Processing Logic..."):
                     try:
                         db = SQLDatabase.from_uri("sqlite:///sales.db")
-                        llm = ChatGroq(temperature=0, groq_api_key=GROQ_API_KEY, model_name="llama-3.3-70b-versatile")
+                        llm = ChatGroq(temperature=0, groq_api_key=GROQ_API_KEY, model_name=GROQ_MODEL)
                         toolkit = SQLDatabaseToolkit(db=db, llm=llm)
-                        agent = create_sql_agent(llm=llm, toolkit=toolkit, verbose=False, handle_parsing_errors=True)
+                        agent = create_sql_agent(llm=llm, toolkit=toolkit, agent_type="tool-calling", verbose=False)
                         response = agent.run(user_query)
                         st.markdown(f'<div class="ai-bubble">{response}</div>', unsafe_allow_html=True)
                         st.session_state.messages.append({"role": "assistant", "content": response})

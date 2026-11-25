@@ -14,7 +14,7 @@
 * **Titanium UI**: A modern, high-contrast "Dark Mode" interface designed for long-session usability.
 
 ### 2. 🧠 Autonomous SQL Analyst
-* **Natural Language Querying**: Powered by **Llama 3 (via Groq)**, users can ask questions like *"What were the top 3 selling products in 2012?"* in plain English.
+* **Natural Language Querying**: Powered by an LLM on **Groq** (default `openai/gpt-oss-120b`, configurable via `GROQ_MODEL`), users can ask questions like *"What were the top 3 selling products in 2012?"* in plain English.
 * **Self-Correcting Logic**: The agent intelligently identifies database schemas and corrects its own SQL syntax errors.
 
 ### 3. 🔮 Predictive Engine
@@ -26,7 +26,7 @@
 ## 🛠️ Tech Stack
 
 * **Frontend**: Streamlit (Custom CSS for "Titanium" Theme)
-* **AI/LLM**: LangChain, Groq API (Llama 3 70B)
+* **AI/LLM**: LangChain (tool-calling SQL agent), Groq API
 * **Database**: SQLite (Production-ready local instance)
 * **Visualization**: Plotly Express & Graph Objects
 * **Forecasting**: Prophet
@@ -37,18 +37,21 @@
 
 1.  **Clone the Repository**
     ```bash
-    git clone [https://github.com/YOUR_USERNAME/RetailGenius.git](https://github.com/YOUR_USERNAME/RetailGenius.git)
+    git clone https://github.com/Malatesh0811/RetailGenius.git
     cd RetailGenius
     ```
 
-2.  **Install Dependencies**
+2.  **Install Dependencies** (inside a virtual environment)
     ```bash
+    python -m venv venv
+    venv\Scripts\activate        # Windows  (macOS/Linux: source venv/bin/activate)
     pip install -r requirements.txt
     ```
 
-3.  **Configure API Key**
-    * Open `app.py`
-    * Add your Groq API Key to line 16: `GROQ_API_KEY = "gsk_..."`
+3.  **Configure API Key** (never put it in the code)
+    * Copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml`
+    * Replace the placeholder with your Groq key from https://console.groq.com/keys
+    * `secrets.toml` is git-ignored, so the key never reaches GitHub
 
 4.  **Run the Application**
     ```bash

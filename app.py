@@ -1,5 +1,6 @@
 import os
 import streamlit as st
+import numpy as np
 import pandas as pd
 import sqlite3
 import plotly.express as px
@@ -93,12 +94,6 @@ st.markdown("""
         box-shadow: 0 4px 10px rgba(0,0,0,0.2);
     }
 
-    /* AI Bubble */
-    .ai-bubble {
-        background: #1e293b; border-radius: 16px; padding: 20px;
-        border: 1px solid #334155; border-left: 4px solid #818cf8;
-        color: #e2e8f0;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -120,47 +115,27 @@ ICON_BRAIN = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" vie
 ICON_FILTER = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>'
 ICON_PEOPLE = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>'
 
-# --- 4. DATA LOADER (SMART AUTO-FIX) ---
+# --- 4. DATA LOADER ---
+DB_PATH = "sales.db"
+# The schema is defined by 1_etl_pipeline.py, so we check for it explicitly instead of
+# guessing column names (guessing could silently pick e.g. customer_segment as the customer).
+REQUIRED_COLUMNS = {"order_id", "order_date", "customer_name", "sales", "profit",
+                    "region", "province", "product_category"}
+
 @st.cache_data
 def load_data():
-    try:
-        conn = sqlite3.connect('sales.db')
-        query = "SELECT * FROM orders"
-        df = pd.read_sql(query, conn)
-        conn.close()
-        
-        # 1. Standardize column names (lowercase, no spaces)
-        df.columns = [col.lower().replace(' ', '_').replace('-', '_') for col in df.columns]
-        
-        # 2. Fix Date Column
-        date_col = 'order_date' if 'order_date' in df.columns else 'date'
-        if date_col in df.columns:
-            df[date_col] = pd.to_datetime(df[date_col])
-        
-        # 3. CRITICAL: Find or Rename Customer ID
-        if 'customer_id' not in df.columns:
-            found_proxy = False
-            possible_ids = ['customer_name', 'customer', 'client_name', 'client', 'contact_name', 'customer_segment']
-            
-            for candidate in possible_ids:
-                if candidate in df.columns:
-                    df.rename(columns={candidate: 'customer_id'}, inplace=True)
-                    found_proxy = True
-                    break
-            
-            if not found_proxy:
-                id_col = 'order_id' if 'order_id' in df.columns else df.columns[0]
-                df['customer_id'] = df[id_col]
+    with sqlite3.connect(DB_PATH) as conn:
+        df = pd.read_sql("SELECT * FROM orders", conn)
+    missing = REQUIRED_COLUMNS - set(df.columns)
+    if missing:
+        raise ValueError(f"'orders' table is missing columns: {sorted(missing)}. Re-run 1_etl_pipeline.py.")
+    df["order_date"] = pd.to_datetime(df["order_date"])
+    return df
 
-        return df
-    except Exception as e:
-        return None
-
-# LOAD THE DATA
-df_raw = load_data()
-
-if df_raw is None:
-    st.error("❌ Database Error. Please ensure 'sales.db' exists and has an 'orders' table.")
+try:
+    df_raw = load_data()
+except Exception as e:  # show the real reason instead of hiding it
+    st.error(f"❌ Could not load data from '{DB_PATH}': {e}")
     st.stop()
 
 # --- 5. SIDEBAR ---
@@ -174,39 +149,32 @@ with st.sidebar:
     
     st.markdown(f'<div style="display:flex; align-items:center; gap:8px; color:#fff; margin-bottom:10px;">{ICON_FILTER} <span>Filters</span></div>', unsafe_allow_html=True)
     
-    with st.container():
-        if 'order_date' in df_raw.columns:
-            min_date = df_raw['order_date'].min()
-            max_date = df_raw['order_date'].max()
-            date_range = st.date_input("Period", value=(min_date, max_date), min_value=min_date, max_value=max_date, label_visibility="collapsed")
-        else:
-            date_range = []
+    min_date = df_raw['order_date'].min().date()
+    max_date = df_raw['order_date'].max().date()
+    date_range = st.date_input("Period", value=(min_date, max_date), min_value=min_date,
+                               max_value=max_date, label_visibility="collapsed")
 
-        region_col = 'region' if 'region' in df_raw.columns else df_raw.columns[0]
-        all_regions = sorted(df_raw[region_col].unique())
-        sel_region = st.multiselect("Region", all_regions, default=all_regions)
-        
-        cat_col = 'product_category' if 'product_category' in df_raw.columns else 'category'
-        if cat_col in df_raw.columns:
-            all_cats = sorted(df_raw[cat_col].unique())
-            sel_cat = st.multiselect("Category", all_cats, default=all_cats)
-        else:
-            sel_cat = []
+    all_regions = sorted(df_raw['region'].unique())
+    sel_region = st.multiselect("Region", all_regions, default=all_regions)
+
+    all_cats = sorted(df_raw['product_category'].unique())
+    sel_cat = st.multiselect("Category", all_cats, default=all_cats)
 
 # --- 6. FILTER LOGIC ---
-if len(date_range) == 2 and 'order_date' in df_raw.columns:
-    start_date, end_date = date_range
-    mask = (
-        (df_raw['order_date'] >= pd.to_datetime(start_date)) & 
-        (df_raw['order_date'] <= pd.to_datetime(end_date)) &
-        (df_raw[region_col].isin(sel_region))
-    )
-    if cat_col in df_raw.columns:
-        mask = mask & (df_raw[cat_col].isin(sel_cat))
-        
-    df = df_raw.loc[mask]
-else:
-    df = df_raw
+# While the user has picked only the start date, date_input returns 1 value -> treat the end as max_date.
+# (Before, that case skipped ALL filters, including region and category.)
+start_date = date_range[0] if len(date_range) >= 1 else min_date
+end_date = date_range[1] if len(date_range) == 2 else max_date
+
+def filter_orders(data, start, end, regions, categories):
+    """Rows between start and end (inclusive) in the selected regions and categories."""
+    return data[
+        data['order_date'].between(pd.Timestamp(start), pd.Timestamp(end))
+        & data['region'].isin(regions)
+        & data['product_category'].isin(categories)
+    ]
+
+df = filter_orders(df_raw, start_date, end_date, sel_region, sel_cat)
 
 if df.empty:
     st.warning("⚠️ No data matches filters.")
@@ -221,15 +189,28 @@ tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Forecast", "Analyst", "Segmentati
 with tab1:
     render_svg_header("Performance Metrics", ICON_DASHBOARD)
     
-    sales = df['sales'].sum() if 'sales' in df.columns else 0
-    profit = df['profit'].sum() if 'profit' in df.columns else 0
-    orders = df.shape[0]
-    
-    # HUGE CARDS + HORIZONTAL FILL
+    def kpis(data):
+        # One order can have several product rows, so orders = distinct order_id, not row count.
+        return data['sales'].sum(), data['profit'].sum(), data['order_id'].nunique()
+
+    def pct_change(now, before):
+        return f"{(now - before) / abs(before) * 100:+.1f}% vs prev. period" if before else None
+
+    sales, profit, orders = kpis(df)
+
+    # Real deltas: compare with the period of the same length right before the selected one
+    # (same region/category filters). No earlier data -> no delta arrow is shown.
+    period_days = (end_date - start_date).days + 1
+    prev_end = start_date - timedelta(days=1)
+    prev_start = prev_end - timedelta(days=period_days - 1)
+    prev_sales, prev_profit, prev_orders = kpis(filter_orders(df_raw, prev_start, prev_end, sel_region, sel_cat))
+
+    st.caption(f"Deltas compare {start_date} → {end_date} with {prev_start} → {prev_end}.")
     c1, c2, c3 = st.columns(3, gap="large")
-    c1.metric("Total Revenue", f"${sales/1000000:.2f}M", "Global Sales")
-    c2.metric("Net Profit", f"${profit/1000:.1f}K", f"{(profit/sales)*100:.1f}% Margin" if sales > 0 else "0%")
-    c3.metric("Transactions", f"{orders:,}", "Total Orders")
+    c1.metric("Total Revenue", f"${sales/1_000_000:.2f}M", pct_change(sales, prev_sales))
+    c2.metric("Net Profit", f"${profit/1000:.1f}K", pct_change(profit, prev_profit))
+    c3.metric("Orders", f"{orders:,}", pct_change(orders, prev_orders))
+    st.caption(f"Profit margin: {profit / sales * 100:.1f}%" if sales else "")
 
     st.markdown("<div style='height: 40px'></div>", unsafe_allow_html=True)
 
@@ -237,41 +218,38 @@ with tab1:
     
     with col_left:
         st.subheader("Revenue Composition")
-        if cat_col in df.columns:
-            fig_pie = px.pie(df, names=cat_col, values='sales', hole=0.7, 
-                             color_discrete_sequence=px.colors.sequential.Teal_r)
-            fig_pie.update_traces(textposition='outside', textinfo='percent+label')
-            fig_pie.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0),
-                                  paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
-            st.plotly_chart(fig_pie, use_container_width=True)
-            
-            st.markdown("""
-            <div class="chart-context">
-                <strong>💡 Revenue Mix:</strong><br>
-                Breakdown of total sales by category. Larger slices indicate your core revenue drivers.
-                Use this to identify which product lines are your "Cash Cows."
-            </div>
-            """, unsafe_allow_html=True)
-    
+        fig_pie = px.pie(df, names='product_category', values='sales', hole=0.7,
+                         color_discrete_sequence=px.colors.sequential.Teal_r)
+        fig_pie.update_traces(textposition='outside', textinfo='percent+label')
+        fig_pie.update_layout(showlegend=False, margin=dict(t=0, b=0, l=0, r=0),
+                              paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+        st.plotly_chart(fig_pie, width="stretch")
+
+        st.markdown("""
+        <div class="chart-context">
+            <strong>💡 Revenue Mix:</strong><br>
+            Breakdown of total sales by category. Larger slices indicate your core revenue drivers.
+            Use this to identify which product lines are your "Cash Cows."
+        </div>
+        """, unsafe_allow_html=True)
+
     with col_right:
-        st.subheader("Regional Profitability")
-        state_col = 'state' if 'state' in df.columns else 'province' if 'province' in df.columns else 'region'
-        if state_col in df.columns:
-            state_data = df.groupby(state_col)['profit'].sum().reset_index().sort_values('profit').tail(8)
-            fig_bar = px.bar(state_data, x='profit', y=state_col, orientation='h', 
-                             color='profit', color_continuous_scale='Teal')
-            fig_bar.update_layout(xaxis_title="Net Profit ($)", yaxis_title=None,
-                                  paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                                  font=dict(color='#94a3b8'))
-            st.plotly_chart(fig_bar, use_container_width=True)
-            
-            st.markdown("""
-            <div class="chart-context">
-                <strong>💡 Profit Hotspots:</strong><br>
-                Ranking of locations by Net Profit (not just Sales). 
-                <span style="color:#2dd4bf">Teal bars</span> indicate your most efficient markets.
-            </div>
-            """, unsafe_allow_html=True)
+        st.subheader("Top 8 Provinces by Profit")
+        prov_data = df.groupby('province')['profit'].sum().reset_index().sort_values('profit').tail(8)
+        fig_bar = px.bar(prov_data, x='profit', y='province', orientation='h',
+                         color='profit', color_continuous_scale='Teal')
+        fig_bar.update_layout(xaxis_title="Net Profit ($)", yaxis_title=None,
+                              paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
+                              font=dict(color='#94a3b8'))
+        st.plotly_chart(fig_bar, width="stretch")
+
+        st.markdown("""
+        <div class="chart-context">
+            <strong>💡 Profit Hotspots:</strong><br>
+            Ranking of provinces by Net Profit (not just Sales).
+            <span style="color:#2dd4bf">Teal bars</span> indicate your most efficient markets.
+        </div>
+        """, unsafe_allow_html=True)
 
 # ==========================================
 # TAB 2: PREDICTIVE ENGINE
@@ -283,10 +261,10 @@ with tab2:
     with c_ctrl:
         st.markdown("**Model Config**")
         days_pred = st.slider("Projection Horizon", 30, 365, 90)
-        run_btn = st.button("Run Simulation", type="primary", use_container_width=True)
+        run_btn = st.button("Run Simulation", type="primary", width="stretch")
 
     with c_viz:
-        if run_btn and 'order_date' in df.columns:
+        if run_btn:
             with st.spinner("Calculating future trends..."):
                 prophet_df = df.groupby('order_date')['sales'].sum().reset_index()
                 prophet_df.columns = ['ds', 'y']
@@ -304,12 +282,14 @@ with tab2:
                 
                 fig.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
                                   font=dict(color='#94a3b8'), xaxis=dict(showgrid=False), yaxis=dict(gridcolor='#1e293b'))
-                st.plotly_chart(fig, use_container_width=True)
-                
-                st.markdown("""
+                st.plotly_chart(fig, width="stretch")
+
+                # f-string so the text matches the slider (it used to always say "90 days")
+                st.markdown(f"""
                 <div class="chart-context">
-                    <strong>💡 AI Prediction:</strong><br>
-                    The <span style="color:#38bdf8">Blue Line</span> represents the AI's forecast for the next 90 days.
+                    <strong>💡 Prophet Forecast:</strong><br>
+                    The <span style="color:#38bdf8">Blue Line</span> is the model's fit on past data plus its
+                    projection for the next {days_pred} days.
                     Upward trends suggest growth; look for recurring patterns (seasonality).
                 </div>
                 """, unsafe_allow_html=True)
@@ -317,16 +297,24 @@ with tab2:
 # ==========================================
 # TAB 3: AI ANALYST
 # ==========================================
+@st.cache_resource  # build the agent once per key/model, not on every question
+def get_sql_agent(api_key, model):
+    # Read-only connection: mode=ro makes SQLite itself reject INSERT/UPDATE/DELETE/DROP,
+    # so even a bad or prompt-injected query from the LLM cannot change or wipe the data.
+    db = SQLDatabase.from_uri(f"sqlite:///file:{DB_PATH}?mode=ro&uri=true", include_tables=["orders"])
+    llm = ChatGroq(temperature=0, groq_api_key=api_key, model_name=model)
+    toolkit = SQLDatabaseToolkit(db=db, llm=llm)
+    return create_sql_agent(llm=llm, toolkit=toolkit, agent_type="tool-calling", verbose=False)
+
 with tab3:
     render_svg_header("Intelligent Query Engine", ICON_BRAIN)
     if "messages" not in st.session_state: st.session_state.messages = []
 
+    # LLM output is shown as plain markdown, NOT unsafe HTML: the text comes from the model
+    # (and indirectly from database contents), so it must not be able to inject HTML/scripts.
     for msg in st.session_state.messages:
-        role_class = "user" if msg["role"] == "user" else "ai-bubble"
-        if msg["role"] == "user":
-            with st.chat_message("user"): st.write(msg["content"])
-        else:
-            with st.chat_message("assistant"): st.markdown(f'<div class="ai-bubble">{msg["content"]}</div>', unsafe_allow_html=True)
+        with st.chat_message(msg["role"]):
+            st.markdown(msg["content"])
 
     user_query = st.chat_input("Query the database...")
 
@@ -336,17 +324,15 @@ with tab3:
                      "(see .streamlit/secrets.toml.example) or set it as an environment variable.")
         else:
             st.session_state.messages.append({"role": "user", "content": user_query})
-            with st.chat_message("user"): st.write(user_query)
+            with st.chat_message("user"):
+                st.markdown(user_query)
             
             with st.chat_message("assistant"):
                 with st.spinner("Processing Logic..."):
                     try:
-                        db = SQLDatabase.from_uri("sqlite:///sales.db")
-                        llm = ChatGroq(temperature=0, groq_api_key=GROQ_API_KEY, model_name=GROQ_MODEL)
-                        toolkit = SQLDatabaseToolkit(db=db, llm=llm)
-                        agent = create_sql_agent(llm=llm, toolkit=toolkit, agent_type="tool-calling", verbose=False)
-                        response = agent.run(user_query)
-                        st.markdown(f'<div class="ai-bubble">{response}</div>', unsafe_allow_html=True)
+                        agent = get_sql_agent(GROQ_API_KEY, GROQ_MODEL)
+                        response = agent.invoke({"input": user_query})["output"]
+                        st.markdown(response)
                         st.session_state.messages.append({"role": "assistant", "content": response})
                     except Exception as e:
                         st.error(f"Error: {e}")
@@ -365,44 +351,43 @@ with tab4:
     </div>
     """, unsafe_allow_html=True)
     
-    try:
-        snapshot_date = df['order_date'].max() + timedelta(days=1)
-        
-        # Safe aggregation
-        rfm = df.groupby('customer_id').agg({
-            'order_date': lambda x: (snapshot_date - x.max()).days,
-            'sales': 'sum',
-            'customer_id': 'count'
-        })
-        
-        rfm.rename(columns={'order_date': 'Recency', 'sales': 'Monetary', 'customer_id': 'Frequency'}, inplace=True)
-        rfm.reset_index(inplace=True)
-        
-        def segment_customer(row):
-            if row['Monetary'] > rfm['Monetary'].quantile(0.95): return '💎 VIP'
-            elif row['Recency'] > 365: return '💤 Dormant'
-            elif row['Frequency'] >= 5: return '🔥 Loyal'
-            else: return '🌱 Regular'
-                
-        rfm['Segment'] = rfm.apply(segment_customer, axis=1)
-        
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("VIP Count", rfm[rfm['Segment'] == '💎 VIP'].shape[0])
-        c2.metric("Loyal Count", rfm[rfm['Segment'] == '🔥 Loyal'].shape[0])
-        c3.metric("At Risk", rfm[rfm['Segment'] == '💤 Dormant'].shape[0])
-        c4.metric("Avg Spend", f"${rfm['Monetary'].mean():.0f}")
-        
-        col_chart, col_data = st.columns([2, 1], gap="medium")
-        
-        with col_chart:
-            fig_rfm = px.scatter(rfm, x='Recency', y='Monetary', color='Segment',
-                                 color_discrete_map={'💎 VIP': '#38bdf8', '🔥 Loyal': '#10b981', 
-                                                     '💤 Dormant': '#94a3b8', '🌱 Regular': '#f43f5e'})
-            fig_rfm.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#94a3b8'))
-            st.plotly_chart(fig_rfm, use_container_width=True)
-            
-        with col_data:
-            st.dataframe(rfm[rfm['Segment'] == '💎 VIP'].sort_values('Monetary', ascending=False).head(10), hide_index=True)
+    def build_rfm(data):
+        """One row per customer with Recency (days), Frequency (orders), Monetary (total sales) and a Segment."""
+        snapshot_date = data['order_date'].max() + timedelta(days=1)
+        rfm = data.groupby('customer_name').agg(
+            Recency=('order_date', lambda x: (snapshot_date - x.max()).days),
+            # nunique, not count: one order has several product rows. count() inflated
+            # Frequency (8,399 rows vs 5,496 real orders) and put too many people in "Loyal".
+            Frequency=('order_id', 'nunique'),
+            Monetary=('sales', 'sum'),
+        ).reset_index()
 
-    except Exception as e:
-        st.error(f"RFM Error: {e}")
+        vip_threshold = rfm['Monetary'].quantile(0.95)  # computed once, not once per customer
+        # First matching rule wins (same priority as before: VIP > Dormant > Loyal > Regular)
+        rfm['Segment'] = np.select(
+            [rfm['Monetary'] > vip_threshold, rfm['Recency'] > 365, rfm['Frequency'] >= 5],
+            ['💎 VIP', '💤 Dormant', '🔥 Loyal'],
+            default='🌱 Regular',
+        )
+        return rfm
+
+    rfm = build_rfm(df)
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("VIP Count", int((rfm['Segment'] == '💎 VIP').sum()))
+    c2.metric("Loyal Count", int((rfm['Segment'] == '🔥 Loyal').sum()))
+    c3.metric("At Risk", int((rfm['Segment'] == '💤 Dormant').sum()))
+    c4.metric("Avg Spend", f"${rfm['Monetary'].mean():.0f}")
+
+    col_chart, col_data = st.columns([2, 1], gap="medium")
+
+    with col_chart:
+        fig_rfm = px.scatter(rfm, x='Recency', y='Monetary', color='Segment',
+                             hover_data=['customer_name', 'Frequency'],
+                             color_discrete_map={'💎 VIP': '#38bdf8', '🔥 Loyal': '#10b981',
+                                                 '💤 Dormant': '#94a3b8', '🌱 Regular': '#f43f5e'})
+        fig_rfm.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#94a3b8'))
+        st.plotly_chart(fig_rfm, width="stretch")
+
+    with col_data:
+        st.dataframe(rfm[rfm['Segment'] == '💎 VIP'].sort_values('Monetary', ascending=False).head(10), hide_index=True)

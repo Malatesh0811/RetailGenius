@@ -11,7 +11,9 @@ SELECT
     SUM(sales) as Total_Sales,
     SUM(profit) as Total_Profit
 FROM orders 
-WHERE order_date BETWEEN '2012-01-01' AND '2012-12-31'
+-- order_date is stored as text like '2012-12-31 00:00:00', which is > '2012-12-31',
+-- so BETWEEN ... '2012-12-31' would miss the last day. Compare the year instead.
+WHERE strftime('%Y', order_date) = '2012'
 """
 
 # Run it
